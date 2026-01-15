@@ -1,6 +1,7 @@
 name = "notion-api-worker"
 main = "src/index.ts"
 compatibility_date = "2024-11-01"
+workers_dev = true
 
 # Environment variables can be set here for development
 # For production, use `wrangler secret put NOTION_TOKEN`
