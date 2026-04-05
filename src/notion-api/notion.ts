@@ -16,6 +16,57 @@ interface INotionParams {
   headers?: Record<string, string>;
 }
 
+// Notion recently started wrapping each recordMap entry in an additional
+// `{ value: { value: <actual>, role }, ... }` layer. Collapse it back to the
+// legacy `{ role, value: <actual> }` shape so downstream code keeps working.
+// See https://github.com/NotionX/react-notion-x/issues/681 and
+// https://github.com/splitbee/notion-api-worker/issues/94
+const unwrapRecordEntry = (entry: any) => {
+  if (!entry || typeof entry !== "object") return entry;
+  const inner = entry.value;
+  if (
+    inner &&
+    typeof inner === "object" &&
+    "value" in inner &&
+    inner.value &&
+    typeof inner.value === "object" &&
+    ("role" in inner || "id" in inner.value)
+  ) {
+    return {
+      ...entry,
+      role: entry.role ?? inner.role,
+      value: inner.value,
+    };
+  }
+  return entry;
+};
+
+const RECORD_MAP_TABLES = [
+  "block",
+  "collection",
+  "collection_view",
+  "notion_user",
+  "space",
+  "team",
+  "bot",
+  "discussion",
+  "comment",
+];
+
+const normalizeRecordMap = <T extends Record<string, any> | undefined | null>(
+  recordMap: T
+): T => {
+  if (!recordMap) return recordMap;
+  for (const tableName of RECORD_MAP_TABLES) {
+    const table = (recordMap as any)[tableName];
+    if (!table) continue;
+    for (const id of Object.keys(table)) {
+      table[id] = unwrapRecordEntry(table[id]);
+    }
+  }
+  return recordMap;
+};
+
 const loadPageChunkBody = {
   limit: 100,
   cursor: { stack: [] },
@@ -52,6 +103,7 @@ export const fetchPageById = async (pageId: string, notionToken?: string) => {
     notionToken,
   });
 
+  normalizeRecordMap(res?.recordMap);
   return res;
 };
 
@@ -103,6 +155,7 @@ export const fetchTableData = async (
     headers,
   });
 
+  normalizeRecordMap(table?.recordMap);
   return table;
 };
 
@@ -118,6 +171,7 @@ export const fetchNotionUsers = async (
     notionToken,
   });
   if (users && users.results) {
+    users.results = users.results.map((u) => unwrapRecordEntry(u));
     return users.results.map((u) => {
       const user = {
         id: u.value.id,
@@ -136,7 +190,7 @@ export const fetchBlocks = async (
   blockList: string[],
   notionToken?: string
 ) => {
-  return await fetchNotionData<LoadPageChunkData>({
+  const res = await fetchNotionData<LoadPageChunkData>({
     resource: "syncRecordValues",
     body: {
       requests: blockList.map((id) => ({
@@ -147,6 +201,8 @@ export const fetchBlocks = async (
     },
     notionToken,
   });
+  normalizeRecordMap(res?.recordMap);
+  return res;
 };
 
 export const fetchNotionSearch = async (
@@ -154,7 +210,7 @@ export const fetchNotionSearch = async (
   notionToken?: string
 ) => {
   // TODO: support other types of searches
-  return fetchNotionData<{ results: NotionSearchResultsType }>({
+  const res = await fetchNotionData<{ results: NotionSearchResultsType }>({
     resource: "search",
     body: {
       type: "BlocksInAncestor",
@@ -178,4 +234,6 @@ export const fetchNotionSearch = async (
     },
     notionToken,
   });
+  normalizeRecordMap((res?.results as any)?.recordMap);
+  return res;
 };
