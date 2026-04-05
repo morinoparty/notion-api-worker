@@ -1,4 +1,3 @@
-// @ts-nocheck
 import {
   fetchPageById,
   fetchTableData,
@@ -30,9 +29,9 @@ export const getTableData = async (
   const collectionColKeys = Object.keys(collectionRows);
 
   const tableArr: RowType[] =
-    table.result.reducerResults.collection_group_results.blockIds.map(
-      (id: string) => table.recordMap.block[id]?.value
-    );
+    table.result.reducerResults.collection_group_results.blockIds
+      .map((id: string) => table.recordMap.block[id])
+      .filter((b): b is RowType => Boolean(b));
 
   const tableData = tableArr.filter(
     (b) =>
